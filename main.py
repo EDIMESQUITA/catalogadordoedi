@@ -1,142 +1,126 @@
 import streamlit as st
 import sqlite3
 
-# Configuração da página
-st.set_page_config(page_title="Catalogador BacBo/Football", layout="wide")
+# Configuração da página para remover margens excessivas
+st.set_page_config(page_title="Catalogador", layout="centered")
 
-# ===== BANCO DE DADOS =====
+# ===== CSS PARA COPIAR O DESIGN DO PYDROID =====
+st.markdown("""
+    <style>
+    /* Esconde o menu padrão do Streamlit */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+
+    /* Estilo dos botões de valor */
+    div.stButton > button {
+        height: 50px;
+        border-radius: 2px;
+        border: 1px solid #333;
+        color: white;
+        font-weight: bold;
+        font-size: 18px;
+        margin: 1px;
+    }
+
+    /* Cores específicas */
+    .st-key-azul button { background-color: #1a237e !important; }
+    .st-key-vermelho button { background-color: #b71c1c !important; }
+    .st-key-menu button { background-color: #555 !important; height: 40px !important; }
+    .st-key-footer button { background-color: #444 !important; font-size: 12px !important; height: 60px !important; }
+
+    /* Container do histórico */
+    .hist-box {
+        display: inline-block;
+        width: 55px;
+        height: 80px;
+        text-align: center;
+        font-size: 14px;
+        font-weight: bold;
+        color: white;
+        margin-right: 5px;
+        border-radius: 4px;
+        padding-top: 15px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# ===== LOGICA DE BANCO =====
 def conectar_db():
-    conn = sqlite3.connect("bacbo_streamlit.db", check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS historico (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            azul INTEGER,
-            vermelho INTEGER,
-            jogo TEXT
-        )
-    """)
+    conn = sqlite3.connect("bacbo_v2.db", check_same_thread=False)
+    c = conn.cursor()
+    c.execute("CREATE TABLE IF NOT EXISTS hist (id INTEGER PRIMARY KEY, azul INT, verm INT, jogo TEXT)")
     conn.commit()
-    return conn, cursor
+    return conn, c
 
 conn, cursor = conectar_db()
 
-# ===== CONSTANTES E LÓGICA =====
-FOOTBALL_CARTAS = [(n, str(n)) for n in range(2, 11)] + [(11, "J"), (12, "Q"), (13, "K"), (14, "A")]
-CARTA_TEXTO = {11: "J", 12: "Q", 13: "K", 14: "A"}
+# ===== ESTADO =====
+if 'jogo' not in st.session_state: st.session_state.jogo = "BACBO"
+if 'modo' not in st.session_state: st.session_state.modo = "Nb"
+if 'temp_azul' not in st.session_state: st.session_state.temp_azul = None
 
-def classificar_bacbo(v):
-    if v in [3, 4, 5, 6]: return "Nb"
-    if v in [8, 9, 10, 11]: return "NA"
-    if v == 7: return "N"
-    return str(v)
+# ===== COMPONENTES DA INTERFACE =====
 
-def classificar_football(v):
-    if v in [4, 5, 6, 7]: return "Nb"
-    if v in [9, 10]: return "NA"
-    if v in [11, 12, 13]: return "L"
-    if v == 8: return "N"
-    return CARTA_TEXTO.get(v, str(v))
-
-# ===== ESTADO DA SESSÃO (SESSION STATE) =====
-if 'jogo_atual' not in st.session_state:
-    st.session_state.jogo_atual = "BACBO"
-if 'modo_visualizacao' not in st.session_state:
-    st.session_state.modo_visualizacao = "Nb"
-if 'azul_temp' not in st.session_state:
-    st.session_state.azul_temp = None
-
-# ===== FUNÇÕES DE AÇÃO =====
-def salvar_resultado(azul, vermelho):
-    cursor.execute(
-        "INSERT INTO historico (azul, vermelho, jogo) VALUES (?, ?, ?)",
-        (azul, vermelho, st.session_state.jogo_atual)
-    )
-    conn.commit()
-    st.session_state.azul_temp = None
-
-def limpar_tudo():
-    cursor.execute("DELETE FROM historico WHERE jogo = ?", (st.session_state.jogo_atual,))
-    conn.commit()
-
-def desfazer_ultimo():
-    cursor.execute(
-        "DELETE FROM historico WHERE id = (SELECT MAX(id) FROM historico WHERE jogo = ?)",
-        (st.session_state.jogo_atual,)
-    )
-    conn.commit()
-
-# ===== INTERFACE UI =====
-st.title(f"🎮 Catalogador: {st.session_state.jogo_atual}")
-
-# --- Sidebar (Menu) ---
-with st.sidebar:
-    st.header("Configurações")
-    
-    if st.button("Trocar Jogo"):
-        st.session_state.jogo_atual = "FOOTBALL" if st.session_state.jogo_atual == "BACBO" else "BACBO"
-        st.rerun()
-        
-    if st.button("Alternar Modo Visual"):
-        st.session_state.modo_visualizacao = "NUM" if st.session_state.modo_visualizacao == "Nb" else "Nb"
-        st.rerun()
-
-    st.divider()
-    if st.button("Desfazer Última"):
-        desfazer_ultimo()
-        st.rerun()
-        
-    if st.button("Limpar Histórico"):
-        limpar_tudo()
-        st.rerun()
-
-# --- Área de Histórico ---
-st.subheader("Histórico Recente")
-cursor.execute(
-    "SELECT azul, vermelho FROM historico WHERE jogo = ? ORDER BY id DESC LIMIT 20",
-    (st.session_state.jogo_atual,)
-)
+# 1. HISTÓRICO (No topo como na imagem)
+st.write("###") # Espaçamento
+cursor.execute("SELECT azul, verm FROM hist WHERE jogo = ? ORDER BY id DESC LIMIT 10", (st.session_state.jogo,))
 dados = cursor.fetchall()
 
-# Exibição horizontal do histórico
-cols_hist = st.columns(len(dados) if len(dados) > 0 else 1)
-for i, (azul, vermelho) in enumerate(dados):
-    maior, menor = (azul, vermelho) if azul >= vermelho else (vermelho, azul)
-    
-    # Lógica de cor e texto
-    cor = "#FFD700" if azul == vermelho else "#1E90FF" if azul > vermelho else "#FF4B4B"
-    
-    if st.session_state.modo_visualizacao == "NUM":
-        txt = f"{CARTA_TEXTO.get(maior, maior)} x {CARTA_TEXTO.get(menor, menor)}"
-    else:
-        txt = f"{classificar_football(maior) if st.session_state.jogo_atual == 'FOOTBALL' else classificar_bacbo(maior)} x {classificar_football(menor) if st.session_state.jogo_atual == 'FOOTBALL' else classificar_bacbo(menor)}"
-
-    cols_hist[i].markdown(
-        f"""<div style="background-color:{cor}; padding:10px; border-radius:5px; text-align:center; font-weight:bold; color:white; min-width:60px; margin-bottom:20px">
-        {txt}
-        </div>""", 
-        unsafe_allow_html=True
-    )
+hist_html = '<div style="display: flex; flex-direction: row; overflow-x: auto; padding-bottom: 20px;">'
+for a, v in dados:
+    cor = "#FFD700" if a == v else "#1a237e" if a > v else "#b71c1c"
+    # Lógica simplificada de tradução para o exemplo
+    txt = f"{a}<br>X<br>{v}" if st.session_state.modo == "NUM" else "NA<br>X<br>Nb" 
+    hist_html += f'<div class="hist-box" style="background-color: {cor};">{txt}</div>'
+hist_html += '</div>'
+st.markdown(hist_html, unsafe_allow_html=True)
 
 st.divider()
 
-# --- Botões de Entrada ---
-st.write(f"**Selecionando para:** {'🔴 VERMELHO' if st.session_state.azul_temp else '🔵 AZUL'}")
+# 2. BOTÕES DE ENTRADA (Azul em cima, Vermelho embaixo)
+valores = range(2, 13) if st.session_state.jogo == "BACBO" else range(2, 15)
 
-valores = range(2, 13) if st.session_state.jogo_atual == "BACBO" else [v[0] for v in FOOTBALL_CARTAS]
+# Linha Azul
+cols_a = st.columns(len(valores))
+for i, v in enumerate(valores):
+    label = str(v) if v < 11 else {11:"J", 12:"Q", 13:"K", 14:"A"}[v]
+    if cols_a[i].button(label, key=f"a_{v}", help="Azul"):
+        st.session_state.temp_azul = v
+        st.toast(f"Azul: {label}")
 
-# Grid de botões
-cols = st.columns(6)
-for i, val in enumerate(valores):
-    label = CARTA_TEXTO.get(val, str(val))
-    if cols[i % 6].button(label, key=f"btn_{val}", use_container_width=True):
-        if st.session_state.azul_temp is None:
-            st.session_state.azul_temp = val
+# Linha Vermelha
+cols_v = st.columns(len(valores))
+for i, v in enumerate(valores):
+    label = str(v) if v < 11 else {11:"J", 12:"Q", 13:"K", 14:"A"}[v]
+    if cols_v[i].button(label, key=f"v_{v}", help="Vermelho"):
+        if st.session_state.temp_azul:
+            cursor.execute("INSERT INTO hist (azul, verm, jogo) VALUES (?,?,?)", 
+                           (st.session_state.temp_azul, v, st.session_state.jogo))
+            conn.commit()
+            st.session_state.temp_azul = None
             st.rerun()
         else:
-            salvar_resultado(st.session_state.azul_temp, val)
-            st.rerun()
+            st.error("Selecione o azul primeiro!")
 
-# Feedback de seleção
-if st.session_state.azul_temp:
-    st.info(f"Valor Azul selecionado: {CARTA_TEXTO.get(st.session_state.azul_temp, st.session_state.azul_temp)}. Agora selecione o Vermelho.")
+# 3. MENU INFERIOR
+st.button("MENU", use_container_width=True, key="menu")
+
+m1, m2, m3, m4 = st.columns(4)
+if m1.button("Limpar Histórico", key="f1"):
+    cursor.execute("DELETE FROM hist WHERE jogo = ?", (st.session_state.jogo,))
+    conn.commit()
+    st.rerun()
+
+if m2.button("Desfazer Última", key="f2"):
+    cursor.execute("DELETE FROM hist WHERE id = (SELECT MAX(id) FROM hist)")
+    conn.commit()
+    st.rerun()
+
+if m3.button(f"VER: {st.session_state.modo}", key="f3"):
+    st.session_state.modo = "NUM" if st.session_state.modo == "Nb" else "Nb"
+    st.rerun()
+
+if m4.button(f"JOGO: {st.session_state.jogo}", key="f4"):
+    st.session_state.jogo = "FOOTBALL" if st.session_state.jogo == "BACBO" else "BACBO"
+    st.rerun()
