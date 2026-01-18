@@ -1,126 +1,116 @@
 import streamlit as st
 import sqlite3
 
-# Configuração da página para remover margens excessivas
-st.set_page_config(page_title="Catalogador", layout="centered")
+# Configuração para ocupar a tela toda
+st.set_page_config(layout="wide")
 
-# ===== CSS PARA COPIAR O DESIGN DO PYDROID =====
+# ===== CSS PARA DEIXAR IGUAL AO PYDROID 3 =====
 st.markdown("""
     <style>
-    /* Esconde o menu padrão do Streamlit */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-
-    /* Estilo dos botões de valor */
+    /* Remove padding excessivo do Streamlit */
+    .block-container { padding: 10px !important; }
+    
+    /* Força os botões a ficarem lado a lado e sem margem */
+    [data-testid="column"] {
+        padding: 0px !important;
+        margin: 0px !important;
+        min-width: 0px !important;
+    }
+    
+    /* Estilo Geral dos Botões */
     div.stButton > button {
-        height: 50px;
-        border-radius: 2px;
-        border: 1px solid #333;
-        color: white;
-        font-weight: bold;
-        font-size: 18px;
-        margin: 1px;
+        width: 100% !important;
+        border-radius: 0px !important;
+        border: 0.5px solid #111 !important;
+        color: white !important;
+        font-weight: bold !important;
+        height: 60px !important;
     }
 
-    /* Cores específicas */
-    .st-key-azul button { background-color: #1a237e !important; }
-    .st-key-vermelho button { background-color: #b71c1c !important; }
-    .st-key-menu button { background-color: #555 !important; height: 40px !important; }
-    .st-key-footer button { background-color: #444 !important; font-size: 12px !important; height: 60px !important; }
+    /* Cores das Fileiras */
+    .st-key-btn_azul button { background-color: #0d1b3e !important; }
+    .st-key-btn_verm button { background-color: #5a1010 !important; }
+    
+    /* Botão Menu e Rodapé */
+    .st-key-btn_menu button { background-color: #444 !important; height: 45px !important; }
+    .st-key-btn_footer button { background-color: #333 !important; font-size: 10px !important; height: 70px !important; }
 
-    /* Container do histórico */
-    .hist-box {
-        display: inline-block;
-        width: 55px;
-        height: 80px;
-        text-align: center;
-        font-size: 14px;
-        font-weight: bold;
-        color: white;
-        margin-right: 5px;
-        border-radius: 4px;
-        padding-top: 15px;
+    /* Histórico (Quadradinhos no topo) */
+    .hist-container { display: flex; overflow-x: auto; gap: 2px; padding-bottom: 10px; }
+    .hist-item {
+        min-width: 50px; height: 70px; 
+        display: flex; align-items: center; justify-content: center;
+        text-align: center; font-size: 12px; font-weight: bold; color: white;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# ===== LOGICA DE BANCO =====
-def conectar_db():
-    conn = sqlite3.connect("bacbo_v2.db", check_same_thread=False)
+# ===== BANCO DE DADOS =====
+def iniciar_db():
+    conn = sqlite3.connect("dados.db", check_same_thread=False)
     c = conn.cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS hist (id INTEGER PRIMARY KEY, azul INT, verm INT, jogo TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY, a INT, v INT, jogo TEXT)")
     conn.commit()
     return conn, c
 
-conn, cursor = conectar_db()
+conn, cursor = iniciar_db()
 
-# ===== ESTADO =====
+# ===== ESTADOS DA SESSÃO =====
 if 'jogo' not in st.session_state: st.session_state.jogo = "BACBO"
-if 'modo' not in st.session_state: st.session_state.modo = "Nb"
-if 'temp_azul' not in st.session_state: st.session_state.temp_azul = None
+if 'modo' not in st.session_state: st.session_state.modo = "Nb / NA"
+if 'azul' not in st.session_state: st.session_state.azul = None
 
-# ===== COMPONENTES DA INTERFACE =====
-
-# 1. HISTÓRICO (No topo como na imagem)
-st.write("###") # Espaçamento
-cursor.execute("SELECT azul, verm FROM hist WHERE jogo = ? ORDER BY id DESC LIMIT 10", (st.session_state.jogo,))
+# 1. EXIBIÇÃO DO HISTÓRICO (Igual à imagem)
+cursor.execute("SELECT a, v FROM logs WHERE jogo = ? ORDER BY id DESC LIMIT 15", (st.session_state.jogo,))
 dados = cursor.fetchall()
 
-hist_html = '<div style="display: flex; flex-direction: row; overflow-x: auto; padding-bottom: 20px;">'
+hist_html = '<div class="hist-container">'
 for a, v in dados:
-    cor = "#FFD700" if a == v else "#1a237e" if a > v else "#b71c1c"
-    # Lógica simplificada de tradução para o exemplo
-    txt = f"{a}<br>X<br>{v}" if st.session_state.modo == "NUM" else "NA<br>X<br>Nb" 
-    hist_html += f'<div class="hist-box" style="background-color: {cor};">{txt}</div>'
+    cor = "#706a12" if a == v else "#0d1b3e" if a > v else "#5a1010"
+    txt = f"{a}<br>X<br>{v}" if st.session_state.modo == "NUM" else "NA<br>X<br>Nb" # Exemplo de lógica
+    hist_html += f'<div class="hist-item" style="background-color: {cor};">{txt}</div>'
 hist_html += '</div>'
 st.markdown(hist_html, unsafe_allow_html=True)
 
-st.divider()
+# 2. BOTÕES DE ENTRADA (Lado a lado)
+cartas = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"]
+if st.session_state.jogo == "BACBO": cartas = [str(i) for i in range(2, 13)]
 
-# 2. BOTÕES DE ENTRADA (Azul em cima, Vermelho embaixo)
-valores = range(2, 13) if st.session_state.jogo == "BACBO" else range(2, 15)
+# Fileira Azul
+cols_a = st.columns(len(cartas))
+for i, c in enumerate(cartas):
+    if cols_a[i].button(c, key=f"btn_azul_{i}"):
+        st.session_state.azul = c
 
-# Linha Azul
-cols_a = st.columns(len(valores))
-for i, v in enumerate(valores):
-    label = str(v) if v < 11 else {11:"J", 12:"Q", 13:"K", 14:"A"}[v]
-    if cols_a[i].button(label, key=f"a_{v}", help="Azul"):
-        st.session_state.temp_azul = v
-        st.toast(f"Azul: {label}")
-
-# Linha Vermelha
-cols_v = st.columns(len(valores))
-for i, v in enumerate(valores):
-    label = str(v) if v < 11 else {11:"J", 12:"Q", 13:"K", 14:"A"}[v]
-    if cols_v[i].button(label, key=f"v_{v}", help="Vermelho"):
-        if st.session_state.temp_azul:
-            cursor.execute("INSERT INTO hist (azul, verm, jogo) VALUES (?,?,?)", 
-                           (st.session_state.temp_azul, v, st.session_state.jogo))
+# Fileira Vermelha
+cols_v = st.columns(len(cartas))
+for i, c in enumerate(cartas):
+    if cols_v[i].button(c, key=f"btn_verm_{i}"):
+        if st.session_state.azul:
+            cursor.execute("INSERT INTO logs (a, v, jogo) VALUES (?,?,?)", (st.session_state.azul, c, st.session_state.jogo))
             conn.commit()
-            st.session_state.temp_azul = None
+            st.session_state.azul = None
             st.rerun()
-        else:
-            st.error("Selecione o azul primeiro!")
 
-# 3. MENU INFERIOR
-st.button("MENU", use_container_width=True, key="menu")
+# 3. MENU E BOTÕES INFERIORES
+st.write("")
+st.button("MENU", use_container_width=True, key="btn_menu")
 
-m1, m2, m3, m4 = st.columns(4)
-if m1.button("Limpar Histórico", key="f1"):
-    cursor.execute("DELETE FROM hist WHERE jogo = ?", (st.session_state.jogo,))
+f1, f2, f3, f4 = st.columns(4)
+if f1.button("Limpar Histórico", key="btn_footer_1"):
+    cursor.execute("DELETE FROM logs WHERE jogo = ?", (st.session_state.jogo,))
     conn.commit()
     st.rerun()
 
-if m2.button("Desfazer Última", key="f2"):
-    cursor.execute("DELETE FROM hist WHERE id = (SELECT MAX(id) FROM hist)")
+if f2.button("Desfazer Última", key="btn_footer_2"):
+    cursor.execute("DELETE FROM logs WHERE id = (SELECT MAX(id) FROM logs)")
     conn.commit()
     st.rerun()
 
-if m3.button(f"VER: {st.session_state.modo}", key="f3"):
-    st.session_state.modo = "NUM" if st.session_state.modo == "Nb" else "Nb"
+if f3.button(f"VER: {st.session_state.modo}", key="btn_footer_3"):
+    st.session_state.modo = "NUM" if st.session_state.modo == "Nb / NA" else "Nb / NA"
     st.rerun()
 
-if m4.button(f"JOGO: {st.session_state.jogo}", key="f4"):
+if f4.button(f"JOGO: {st.session_state.jogo}", key="btn_footer_4"):
     st.session_state.jogo = "FOOTBALL" if st.session_state.jogo == "BACBO" else "BACBO"
     st.rerun()
